@@ -1,3 +1,10 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^S-1-\d+(-\d+)+$')]
+    [string]$InstallerUserSid
+)
+
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -13,6 +20,12 @@ function Write-Log {
 }
 
 Write-Log 'Starting repo Windows setup.'
+
+# Resolve the original installer's SID before making any system changes.
+# Never fall back to the elevated process identity or a hard-coded account.
+$sid = New-Object System.Security.Principal.SecurityIdentifier($InstallerUserSid)
+$resolvedAccount = $sid.Translate([System.Security.Principal.NTAccount]).Value
+Write-Log "Installation initiated by $resolvedAccount ($($sid.Value))."
 
 # 1) Enable Developer Mode for symbolic link creation support.
 $registryView = [Microsoft.Win32.RegistryView]::Registry32
@@ -48,13 +61,9 @@ try {
     if ($baseKey) { $baseKey.Dispose() }
 }
 
-# 2) Assign the requested user directly, never the Users group or UAC admin.
-$symlinkAccount = 'pol2hi'
+# 2) Assign the original installer user directly, not the UAC admin account.
 $privilege = 'SeCreateSymbolicLinkPrivilege'
 try {
-    $account = New-Object System.Security.Principal.NTAccount($symlinkAccount)
-    $sid = $account.Translate([System.Security.Principal.SecurityIdentifier])
-    $resolvedAccount = $sid.Translate([System.Security.Principal.NTAccount]).Value
     Write-Log "Assigning $privilege directly to $resolvedAccount ($($sid.Value))."
     Add-Type -Path (Join-Path $PSScriptRoot 'SymlinkPrivilege.cs')
     [RepoInstaller.SymlinkPrivilege]::Grant($sid.Value)

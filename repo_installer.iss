@@ -32,6 +32,7 @@ PrivilegesRequired=admin
 DisableProgramGroupPage=yes
 
 [Files]
+Source: "{#RootDir}\scripts\get_installer_identity.ps1"; Flags: dontcopy
 Source: "{#RootDir}\runtime\repo\repo"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
 Source: "{#RootDir}\runtime\repo\LICENSE"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
 Source: "{#RootDir}\runtime\repo\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
@@ -52,6 +53,48 @@ var
   PreviousUninstallNeedsRestart: Boolean;
   UninstallProgressPage: TOutputProgressWizardPage;
   UninstallSummary: String;
+  InstallerUserSid: String;
+
+function ResolveInstallerUser(): String;
+var
+  IdentityFile: String;
+  IdentityData: AnsiString;
+  ExitCode: Integer;
+  I: Integer;
+begin
+  Result := '';
+  if InstallerUserSid <> '' then Exit;
+  IdentityFile := ExpandConstant('{tmp}\installer-user.sid');
+  try
+    ExtractTemporaryFile('get_installer_identity.ps1');
+    DeleteFile(IdentityFile);
+    { Inno retains the original user's token when it elevates via UAC.
+      Do not use Exec here: that would identify the elevated administrator. }
+    if not ExecAsOriginalUser(
+      ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      ExpandConstant('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{tmp}\get_installer_identity.ps1" -OutputFile "') + IdentityFile + '"',
+      '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+      Result := 'Could not identify the user who started setup: ' + SysErrorMessage(ExitCode)
+    else if ExitCode <> 0 then
+      Result := 'Installer user identification failed (exit code ' + IntToStr(ExitCode) + ').'
+    else if not LoadStringFromFile(IdentityFile, IdentityData) then
+      Result := 'Could not read the installer user identity.'
+    if Result <> '' then Exit;
+
+    InstallerUserSid := Trim(String(IdentityData));
+    if Copy(InstallerUserSid, 1, 4) <> 'S-1-' then
+      Result := 'Invalid installer user SID.';
+    for I := 5 to Length(InstallerUserSid) do
+      if Pos(Copy(InstallerUserSid, I, 1), '0123456789-') = 0 then
+        Result := 'Invalid installer user SID.';
+    if Result = '' then
+      Log('Original installer user SID: ' + InstallerUserSid);
+  except
+    Result := 'Installer user identification failed: ' + GetExceptionMessage;
+  end;
+  DeleteFile(IdentityFile);
+  if Result <> '' then InstallerUserSid := '';
+end;
 
 procedure InitializeWizard();
 begin
@@ -78,7 +121,7 @@ begin
     PreviousFsRedirection := EnableFsRedirection(False);
   try
     if not Exec(PowerShellPath,
-      ExpandConstant('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{app}\scripts\configure_repo_windows.ps1"'),
+      ExpandConstant('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{app}\scripts\configure_repo_windows.ps1" -InstallerUserSid "') + InstallerUserSid + '"',
       ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ExitCode) then
       ErrorText := 'Could not start Windows configuration: ' + SysErrorMessage(ExitCode)
     else if ExitCode <> 0 then
@@ -202,7 +245,9 @@ begin
   { Run only after Install was confirmed, before copying any new files.
     Uninstall is best effort: never return an error or request a pre-install
     restart. Check every registry view even if an earlier attempt failed. }
-  Result := '';
+  { Identify the original user before uninstalling or modifying anything. }
+  Result := ResolveInstallerUser();
+  if Result <> '' then Exit;
   TryUninstallPrevious(HKLM32);
   TryUninstallPrevious(HKCU32);
   if IsWin64 then

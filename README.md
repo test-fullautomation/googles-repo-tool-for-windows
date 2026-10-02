@@ -1,90 +1,150 @@
-# repo Windows Installer
+# Google repo for Windows
 
-Self-contained repo launcher and private embedded Python for Windows x64.
-Compiler: **Inno Setup 5.5.1**. Git for Windows must be installed separately.
+**repo** manages multiple Git repositories together. A manifest file defines which repositories belong to a project and which versions are used. repo complements Git; it does not replace Git.
 
-## Directory layout
+This installation package makes repo available in the Windows Command Prompt (CMD), PowerShell, and Git Bash. A dedicated Python runtime is included.
+You do not need to install Python separately or activate an environment.
+Existing Python installations are not modified.
 
-- `repo_installer.iss`: installer definition (project entry point).
-- `build.cmd` / `build.sh`: build entry points for Windows CMD and Git Bash.
-- `tools/InnoSetup5.5.1/`: bundled Inno Setup compiler (build only).
-- `bin/repo.cmd`: Windows CMD launcher.
-- `bin/repo`: Git Bash launcher.
-- `runtime/repo/repo`: the **only** copy of the upstream repo bootstrap.
-- `runtime/python/`: the **only** extracted embedded Python runtime.
-- `scripts/prepare_assets.ps1`: prepare missing runtime assets on the build machine.
-- `scripts/configure_repo_windows.ps1`: Windows configuration on the target machine.
-- `build/`: generated installer output.
+## Prerequisites
 
-The two launchers address different shells; neither is generated or copied into
-the project root. The source and installed runtime layouts are identical.
+- Windows 10 or Windows 11 on an **x64 system**.
+- **[Git for Windows](https://gitforwindows.org/)** is installed and available from your console.
+  Verify this with `git --version`.
+- Administrator rights for the installation and Windows settings.
+- For your project: the manifest URL, optionally a branch and manifest filename,
+  as well as the required access permissions.
+  You can obtain this information from the project team.
+- Network access to the participating Git servers; depending on the environment,
+  also VPN, SSH keys, or HTTPS credentials.
 
-## Prepare assets (no system Python required)
+## Installation
 
-From this directory in PowerShell, run `& ./scripts/prepare_assets.ps1`.
-It downloads the repo bootstrap and Python 3.12.9 embeddable x64 package from
-their official URLs only when the runtime is missing. The Python download is
-extracted in a temporary staging directory and its ZIP is deleted afterwards.
-No persistent download cache or duplicate runtime is kept.
+1. Start the provided installer and confirm the Windows prompt for administrator privileges.
+2. Select the installation directory. The default is `C:\Program Files\repo`.
+3. If repo was previously installed using this package, Setup first attempts to uninstall the old version.
+   The process is displayed. If it fails, the new installation continues anyway;
+   pay attention to any warnings.
+4. At the end, you can **restart now or later**. “Later” is preselected.
+   At a minimum, sign out and sign back in so that new user rights take effect.
+5. Open a new console and verify the installation with `repo --help`.
 
-For an offline completeness check use `& ./scripts/prepare_assets.ps1 -Offline`.
-Preserve or transfer the complete `runtime/` directory for offline builds.
-If the runtime is already present, preparation performs no downloads.
+There is **no desktop or Start menu shortcut**: repo is a command-line tool.
+Use it in the console within your project's working directory, not in the installation directory.
 
-## Build and local use
+### What does Setup change in Windows?
 
-From this directory, compile using `build.cmd` in Windows CMD,
-`./build.cmd` in PowerShell, or `bash ./build.sh` in Git Bash.
-Both scripts use the bundled `tools/InnoSetup5.5.1/ISCC.exe`, work when called
-from another directory, and return the compiler's exit code. Optional compiler
-switches are forwarded, e.g. `build.cmd /Q` or `bash ./build.sh /Q`.
-Prepare the runtime assets first as described above; building does not download
-anything or run the installer. No compiler installation or PATH change is needed.
-Output: `build/repo-installer.exe`.
+- It adds the repo command to the user's search path.
+- It enables Developer Mode unless a policy prevents it.
+- It grants the **user who launched Setup** the right
+  **“Create symbolic links”**.
+  Such links can point to files or directories and are required by some projects.
 
-Run locally using `./bin/repo.cmd --help` (PowerShell/CMD) or
-`./bin/repo --help` (Git Bash). Both use the private runtime directly; no Python
-activation, system Python, or global Python PATH change is needed.
+On managed corporate computers, central policies may block or later revert these settings.
+In that case, contact your IT department.
 
-The installer packages `bin/`, `runtime/` and the Windows configuration script.
-The asset-preparation script and the Python download ZIP are not installed.
-Python's `python312.zip` **is required**: it is the standard library, not the
-redundant download archive. Installation itself is offline; the repo bootstrap's
-`repo init`/`repo sync` operations still need access to their Git repositories.
+## Getting Started with a Project
 
-## Reinstallation
+Create a dedicated writable working directory, for example
+`C:\work\my-project`, and change to it in the console.
 
-After confirming Install, setup looks for the existing `repo_is1` uninstall registration in HKLM/HKCU (32-bit and 64-bit views). It runs that installation's uninstaller silently and waits for completion before copying new files. Uninstall is best effort: missing uninstallers, nonzero exit codes, exceptions, or a remaining uninstall registration are logged as warnings and do not block the new installation. All registry views are checked even if an earlier attempt fails. A restart requested by the uninstaller (exit code 3010) is deferred until after installation.
+Perform the following steps there. Replace the uppercase placeholders
+with the values provided for your project; they are not complete example addresses.
 
-A successful uninstall also removes the old installer-managed ZIP and nested bootstrap layout. Unregistered folders and user-created files are not recursively deleted. If uninstall fails, leftovers may remain; ordinary installation failures such as locked files, file/directory conflicts or insufficient permissions can still prevent copying new files. A failure after uninstall does not restore the previous installation. Use setup's `/LOG` option to capture uninstall warnings.
+| Step | Command | Meaning |
+| --- | --- | --- |
+| Set up the project | `repo init -u MANIFEST_URL` | Connects the working directory to the manifest. |
+| Select a specific project configuration | `repo init -u MANIFEST_URL -b BRANCH -m MANIFEST.xml` | Alternative to the simple command when your team specifies a branch and manifest file. |
+| Download or update repositories | `repo sync` | Synchronizes the repositories described by the manifest. |
+| View local changes | `repo status` | Shows the status of the project repositories. |
+| Get help for a command | `repo help sync` | Explains options and behavior of the command. |
 
-The new Python files are tracked by Inno Setup and removed during uninstall. Older releases extracted Python at installation time, so those old untracked files may remain; setup does not indiscriminately delete the installation directory.
+**Before synchronizing, save local changes**, for example by creating commits
+according to your project's guidelines. Do not use options that discard local changes
+or force checkouts without understanding their effect.
 
-The generated installer places the repo helper under `%ProgramFiles%\repo` and adds the `bin` folder to the user PATH so `repo` is directly callable from both `cmd.exe` and Git Bash.
+### What Works Offline?
 
-## Windows settings applied by the installer
+**The installation does not require Internet access.**
+The package contains the repo launcher and the required Python runtime.
 
-Setup requires administrator rights. The configuration script attempts to enable
-Developer Mode in the native registry view (64-bit on Windows x64) and reads
-back the DWORD value to verify the write. Setup launches native PowerShell and
-shows a configuration error if the script fails; details are recorded in
-`%ProgramData%\repo-installer.log`. A blocking Developer Mode policy is reported,
-not overwritten. The registry check does not replace an actual symlink test.
-The symlink-privilege step uses the Windows LSA API through
-`scripts/SymlinkPrivilege.cs`; no external `ntrights.exe` is required. It adds
-`SeCreateSymbolicLinkPrivilege` directly to **pol2hi** and reads the
-assignment back. Existing accounts and their rights are preserved. Failures
-are logged and shown by setup instead of being silently ignored.
+This does not mean that a project is available offline:
+`repo init` normally downloads additional repo components and the manifest;
+`repo sync` requires access to the Git repositories.
+The corresponding servers must therefore be reachable, possibly through a VPN
+or an internal network.
 
-In Local Security Policy > Local Policies > User Rights Assignment > Create
-symbolic links, expect **pol2hi** (possibly displayed as `DOMAIN\pol2hi`).
-The account is resolved to its SID and logged with its qualified name; an unknown
-account fails visibly. The target is `$symlinkAccount` in the configuration
-script; use a qualified `DOMAIN\pol2hi` or `COMPUTER\pol2hi` if account names
-are ambiguous. Neither the Users group nor the UAC administrator is substituted.
-Earlier group assignments are not automatically removed because setup cannot
-distinguish pre-existing permissions from assignments made by older installers.
-Sign out and
-back in for a new access token. The assignment is retained on uninstall.
-Domain policies may override the local assignment at the next refresh and must
-be managed by the domain administrator. Open a new shell for PATH changes.
+## Common Problems
+
+### “repo” is not found
+
+- Close the console and open it again. For integrated terminals,
+  a restart of VS Code or Windows Terminal may also be required.
+- In CMD or PowerShell, use `where.exe repo`; in Git Bash, use
+  `type -a repo` to determine which command is found.
+- If multiple results are returned, an older installation may appear first in the search path.
+  Verify the paths before removing entries.
+- If Setup was started using a different administrator account,
+  the user search path of that account may have been modified.
+  Your IT department can add the installation's `bin` subfolder to your user search path.
+
+### “repo is not yet installed”
+
+Outside of an initialized project, this message from the repo launcher is normal.
+Initialize the desired working directory using `repo init`.
+The message does not automatically indicate that the Windows installation failed.
+
+### Git access or synchronization fails
+
+First verify `git --version`, your VPN connection, the server address,
+and your Git access permissions.
+Missing SSH keys or expired credentials cannot be fixed by reinstalling repo.
+Provide the complete error message to your project team.
+
+### Symbolic links cannot be created
+
+1. Sign out and sign back in after installation, or restart Windows.
+2. Search for **“Developer Mode”** in Windows Settings and verify its status.
+3. In the **Local Security Policy**, under **Local Policies →
+   User Rights Assignment → Create symbolic links**, verify that
+   **your user account** is listed, including the domain prefix if applicable.
+4. If a different user account was used or a corporate policy blocks the setting,
+   contact your IT department.
+   The Local Security Policy management tool is not available in all Windows editions.
+
+### Setup reports a configuration error
+
+The program files may already be installed even if a Windows setting
+could not be applied. Therefore, do not ignore the message.
+Details are available in
+`C:\ProgramData\repo-installer.log`
+(or under `%ProgramData%` if your system configuration differs).
+Provide the error text and the entries from the latest installation run to IT.
+Do not send credentials or tokens.
+
+## Updating and Uninstalling
+
+To update, start the new installer.
+Save your work beforehand and close any running repo commands.
+Project working directories belong outside the installation directory;
+projects stored there are not managed by the installer.
+
+To remove the software, open **Windows Settings → Apps**,
+search for **Google's repo tool for Windows**, and select **Uninstall**.
+For older packages, the entry may simply be called **repo**.
+
+Developer Mode and assigned user rights are **not automatically reverted**
+during uninstallation. A remaining repo search path entry may also require
+manual cleanup. Coordinate any changes to security rights with IT, as other
+tools may rely on them as well.
+
+## Origin and License
+
+This package includes Google **repo** from the **Android Open Source Project**,
+licensed under the **Apache License 2.0**.
+Copyright and license notices from the original script remain intact.
+
+- runtime/repo/LICENSE
+- [untime/repo/THIRD-PARTY-NOTICES.txt
+- [Official repo Project](https://gerrit.googlesource.com/git-repo/party files are also included in the installation directory
+under `runtime\repo`.
