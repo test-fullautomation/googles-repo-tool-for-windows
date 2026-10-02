@@ -1,0 +1,19 @@
+Third-Party Software Notice
+==========================
+
+This distribution includes Google repo (the Android Open Source Project's
+Git repository management tool), specifically its standalone bootstrap
+launcher, provided in the adjacent file named "repo".
+
+Project: https://gerrit.googlesource.com/git-repo/
+Bootstrap source: https://storage.googleapis.com/git-repo-downloads/repo
+
+Copyright (C) 2008 The Android Open Source Project
+
+License: Apache License, Version 2.0 (Apache-2.0).
+The complete original license text is included in the adjacent LICENSE file.
+Official license text: https://www.apache.org/licenses/LICENSE-2.0.txt
+
+The copyright and license notices in the upstream repo bootstrap are retained.
+The Windows installer, shell wrappers and private Python runtime are packaging
+components and are not part of the upstream repo bootstrap.

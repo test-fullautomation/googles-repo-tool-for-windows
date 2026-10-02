@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PYTHON_EXE="${APP_ROOT}/runtime/python/python.exe"
+
+REPO_SCRIPT="${APP_ROOT}/runtime/repo/repo"
+
+if [ ! -f "${PYTHON_EXE}" ]; then
+  echo "repo: embedded Python runtime not found at ${APP_ROOT}/runtime/python" >&2
+  echo "Prepare the runtime using scripts/prepare_assets.ps1 or reinstall repo." >&2
+  exit 1
+fi
+
+if [ ! -f "${REPO_SCRIPT}" ]; then
+  echo "repo: bootstrap script not found at ${REPO_SCRIPT}" >&2
+  exit 1
+fi
+
+exec "${PYTHON_EXE}" "${REPO_SCRIPT}" "$@"
