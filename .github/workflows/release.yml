@@ -1,0 +1,33 @@
+name: Windows prerelease
+
+# Triggers on tags like rel/1.2.3 and publishes a GitHub prerelease with the
+# built installer (build/repo-installer.exe) attached as an asset.
+on:
+  push:
+    tags:
+      - 'rel/*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare runtime assets (Python + repo bootstrap)
+        shell: pwsh
+        run: scripts\prepare_assets.ps1
+
+      - name: Build installer
+        shell: cmd
+        run: build.cmd
+
+      - name: Publish prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          prerelease: true
+          files: build/repo-installer.exe
