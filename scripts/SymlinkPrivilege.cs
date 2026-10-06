@@ -90,14 +90,6 @@ namespace RepoInstaller
             finally { LsaFreeMemory(buffer); }
         }
 
-        public static bool IsAssigned(string accountSid)
-        {
-            byte[] sid = SidBytes(accountSid);
-            IntPtr policy = Open(0x00000800); // POLICY_LOOKUP_NAMES (read only)
-            try { return HasRight(policy, sid); }
-            finally { LsaClose(policy); }
-        }
-
         public static void Grant(string accountSid)
         {
             byte[] sid = SidBytes(accountSid);

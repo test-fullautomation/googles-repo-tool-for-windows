@@ -6,7 +6,6 @@
 #define AppVersion "0.9.1"
 #define AppPublisher "Robert Bosch GmbH"
 #define AppName "Google's repo tool for Windows"
-#define RootDir "."
 
 #if !FileExists(SourcePath + "runtime\python\python.exe")
   #error Run scripts\prepare_assets.ps1 before compiling.
@@ -24,7 +23,7 @@ ArchitecturesInstallIn64BitMode=x64
 ; Do not reuse the x86 directory from an older installation.
 UsePreviousAppDir=no
 DefaultDirName={pf}\repo
-OutputDir={#RootDir}\build
+OutputDir=build
 OutputBaseFilename=repo-installer
 Compression=lzma2/max
 SolidCompression=yes
@@ -32,15 +31,15 @@ PrivilegesRequired=admin
 DisableProgramGroupPage=yes
 
 [Files]
-Source: "{#RootDir}\scripts\get_installer_identity.ps1"; Flags: dontcopy
-Source: "{#RootDir}\runtime\repo\repo"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
-Source: "{#RootDir}\runtime\repo\LICENSE"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
-Source: "{#RootDir}\runtime\repo\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
-Source: "{#RootDir}\bin\repo.cmd"; DestDir: "{app}\bin"; Flags: ignoreversion
-Source: "{#RootDir}\bin\repo"; DestDir: "{app}\bin"; Flags: ignoreversion
-Source: "{#RootDir}\scripts\configure_repo_windows.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
-Source: "{#RootDir}\scripts\SymlinkPrivilege.cs"; DestDir: "{app}\scripts"; Flags: ignoreversion
-Source: "{#RootDir}\runtime\python\*"; DestDir: "{app}\runtime\python"; Excludes: "__pycache__\*,*.pyc"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "scripts\get_installer_identity.ps1"; Flags: dontcopy
+Source: "runtime\repo\repo"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
+Source: "runtime\repo\LICENSE"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
+Source: "runtime\repo\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
+Source: "bin\repo.cmd"; DestDir: "{app}\bin"; Flags: ignoreversion
+Source: "bin\repo"; DestDir: "{app}\bin"; Flags: ignoreversion
+Source: "scripts\configure_repo_windows.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "scripts\SymlinkPrivilege.cs"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "runtime\python\*"; DestDir: "{app}\runtime\python"; Excludes: "__pycache__\*,*.pyc"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Registry]
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}\bin"; Flags: preservestringtype; Check: NeedsAddPath(ExpandConstant('{app}\bin'))

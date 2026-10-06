@@ -30,7 +30,7 @@ Existing Python installations are not modified.
 5. Open a new console and verify the installation with `repo --help`.
 
 There is **no desktop or Start menu shortcut**: repo is a command-line tool.
-Use it in the console within your project's working directory, not in the installation directory.
+Use it in the console within your project's working directory, **not** in the installation directory.
 
 ### What does Setup change in Windows?
 
@@ -41,7 +41,7 @@ Use it in the console within your project's working directory, not in the instal
   Such links can point to files or directories and are required by some projects.
 
 On managed corporate computers, central policies may block or later revert these settings.
-In that case, contact your IT department.
+In that case, contact your IT department. Google's repo tool uses extensively symbolic links.
 
 ## Getting Started with a Project
 
@@ -74,6 +74,54 @@ This does not mean that a project is available offline:
 The corresponding servers must therefore be reachable, possibly through a VPN
 or an internal network.
 
+### How the Bootstrap Loader and the repo Tool Work Together
+
+The installer only puts a small, fixed **bootstrap loader** on your computer.
+The actual **repo tool** is downloaded per project the first time you run
+`repo init`, and lives inside that project's working directory.
+
+```mermaid
+flowchart TD
+    classDef installed fill:#2563eb,stroke:#1e3a8a,color:#ffffff,stroke-width:1px;
+    classDef action fill:#f59e0b,stroke:#92400e,color:#1f2937,stroke-width:1px;
+    classDef project fill:#f3f4f6,stroke:#9ca3af,color:#1f2937,stroke-width:1px;
+
+    subgraph Installed["💽 Installed once by Setup — fixed, works offline"]
+        direction TB
+        A["repo / repo.cmd launcher<br/>(bin/)"]
+        B["Bundled Python runtime<br/>(runtime/python/python.exe)"]
+        C["Bootstrap loader<br/>(runtime/repo/repo)"]
+        A --> B --> C
+    end
+
+    class A,B,C installed
+
+    Mkdir["mkdir C:\work\my-project<br/>(empty workspace directory, created by you)"]:::action
+    Init(["cd my-project<br/>repo init -u MANIFEST_URL"]):::action
+    C -- "you run" --> Mkdir --> Init
+
+    subgraph Project["📂 Workspace directory — filled on demand by repo init"]
+        direction TB
+        E["Clones git-repo project<br/>into .repo/repo.git"]
+        F[".repo/repo/main.py<br/>(the real, version-controlled repo tool)"]
+        G["Manifest<br/>(.repo/manifest.xml)"]
+        E --> F --> G
+    end
+
+    class E,F,G project
+
+    Init -- "downloads &amp; installs" --> E
+    G --> H["repo sync / status / ...<br/>hands off to main.py from here on"]:::action
+```
+
+In short: the Windows package only guarantees that `repo` is always found and
+that a matching Python runtime exists — nothing more is installed up front.
+You first create an empty **workspace directory** for your project yourself;
+running `repo init` inside it is what actually "installs" the real repo tool:
+the bootstrap loader downloads it into that directory's `.repo` folder, and
+every subsequent command (`repo sync`, `repo status`, ...) is handed off to
+that downloaded copy.
+
 ## Common Problems
 
 ### “repo” is not found
@@ -90,7 +138,7 @@ or an internal network.
 
 ### “repo is not yet installed”
 
-Outside of an initialized project, this message from the repo launcher is normal.
+**Outside of an initialized project, this message from the repo launcher is normal**.
 Initialize the desired working directory using `repo init`.
 The message does not automatically indicate that the Windows installation failed.
 
@@ -138,13 +186,29 @@ during uninstallation. A remaining repo search path entry may also require
 manual cleanup. Coordinate any changes to security rights with IT, as other
 tools may rely on them as well.
 
+
+## Maintainers
+[Thomas Pollerspöck](mailto:Thomas.Pollerspoeck@de.bosch.com)
+
 ## Origin and License
 
-This package includes Google **repo** from the **Android Open Source Project**,
+This **repo tool for Windows** packaging (installer, launchers, and build
+scripts) is itself licensed under the **Apache License 2.0**; see
+[LICENSE](LICENSE) in the root of this repository.
+
+This package also includes Google **repo** from the **Android Open Source Project**,
 licensed under the **Apache License 2.0**.
 Copyright and license notices from the original script remain intact.
 
 - runtime/repo/LICENSE
-- [untime/repo/THIRD-PARTY-NOTICES.txt
-- [Official repo Project](https://gerrit.googlesource.com/git-repo/party files are also included in the installation directory
+- runtime/repo/THIRD-PARTY-NOTICES.txt
+- [Official repo Project](https://gerrit.googlesource.com/git-repo/)
+
+These third-party files are also included in the installation directory
 under `runtime\repo`.
+
+The installer itself is built with **Inno Setup**, copyrighted by Jordan Russell
+(Copyright © 1997-2012 Jordan Russell, portions Copyright © 2000-2012 Martijn Laan).
+Inno Setup is free to use, including for commercial applications; see
+
+- tools/InnoSetup5.5.1/license.txt
