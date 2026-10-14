@@ -12,4 +12,4 @@ fi
 
 # Keep Inno switches such as /Q and /DName=value intact in Git Bash.
 export MSYS2_ARG_CONV_EXCL='*'
-exec "$compiler" "$@" 'repo_installer.iss'
+exec "$compiler" "$@" 'installer/repo_installer.iss'

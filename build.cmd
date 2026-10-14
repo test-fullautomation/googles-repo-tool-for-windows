@@ -10,7 +10,7 @@ if not exist "tools\InnoSetup5.5.1\ISCC.exe" (
     exit /b 1
 )
 
-"tools\InnoSetup5.5.1\ISCC.exe" %* "repo_installer.iss"
+"tools\InnoSetup5.5.1\ISCC.exe" %* "installer\repo_installer.iss"
 set "BUILD_EXIT_CODE=%ERRORLEVEL%"
 popd
 exit /b %BUILD_EXIT_CODE%

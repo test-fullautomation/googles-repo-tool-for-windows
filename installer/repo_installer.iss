@@ -3,11 +3,15 @@
 ; Python runtime for repo only, so it can be used from cmd.exe and Git Bash
 ; with no global Python installation required.
 
-#define AppVersion "0.9.1"
+; Override via command line, e.g. ISCC /DAppVersion=1.2.3 ... (build.cmd/build.sh
+; forward extra arguments to ISCC). Falls back to the default below if omitted.
+#ifndef AppVersion
+  #define AppVersion "0.0.0"
+#endif
 #define AppPublisher "Robert Bosch GmbH"
 #define AppName "Google's repo tool for Windows"
 
-#if !FileExists(SourcePath + "runtime\python\python.exe")
+#if !FileExists(SourcePath + "..\runtime\python\python.exe")
   #error Run scripts\prepare_assets.ps1 before compiling.
 #endif
 
@@ -23,23 +27,23 @@ ArchitecturesInstallIn64BitMode=x64
 ; Do not reuse the x86 directory from an older installation.
 UsePreviousAppDir=no
 DefaultDirName={pf}\repo
-OutputDir=build
-OutputBaseFilename=repo-installer
+OutputDir={#SourcePath}\..\build
+OutputBaseFilename=repo-installer-{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 PrivilegesRequired=admin
 DisableProgramGroupPage=yes
 
 [Files]
-Source: "scripts\get_installer_identity.ps1"; Flags: dontcopy
-Source: "runtime\repo\repo"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
-Source: "runtime\repo\LICENSE"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
-Source: "runtime\repo\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
-Source: "bin\repo.cmd"; DestDir: "{app}\bin"; Flags: ignoreversion
-Source: "bin\repo"; DestDir: "{app}\bin"; Flags: ignoreversion
-Source: "scripts\configure_repo_windows.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
-Source: "scripts\SymlinkPrivilege.cs"; DestDir: "{app}\scripts"; Flags: ignoreversion
-Source: "runtime\python\*"; DestDir: "{app}\runtime\python"; Excludes: "__pycache__\*,*.pyc"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\scripts\get_installer_identity.ps1"; Flags: dontcopy
+Source: "..\runtime\repo\repo"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
+Source: "..\runtime\repo\LICENSE"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
+Source: "..\runtime\repo\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
+Source: "..\bin\repo.cmd"; DestDir: "{app}\bin"; Flags: ignoreversion
+Source: "..\bin\repo"; DestDir: "{app}\bin"; Flags: ignoreversion
+Source: "..\scripts\configure_repo_windows.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "..\scripts\SymlinkPrivilege.cs"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "..\runtime\python\*"; DestDir: "{app}\runtime\python"; Excludes: "__pycache__\*,*.pyc"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Registry]
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}\bin"; Flags: preservestringtype; Check: NeedsAddPath(ExpandConstant('{app}\bin'))
