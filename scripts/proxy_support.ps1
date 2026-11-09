@@ -69,8 +69,10 @@ function Resolve-Proxy([Uri]$Target) {
 
     $system = [Net.WebRequest]::GetSystemWebProxy()
     $system.Credentials = [Net.CredentialCache]::DefaultNetworkCredentials
-    if (-not $system.IsBypassed($Target)) {
-        return [pscustomobject]@{ Kind = 'system'; Description = "system proxy $($system.GetProxy($Target).Authority)"; Proxy = $system }
+    # Windows PowerShell returns the target itself when no proxy applies, PowerShell 7 returns $null.
+    $proxyUri = if ($system.IsBypassed($Target)) { $null } else { $system.GetProxy($Target) }
+    if ($proxyUri -and $proxyUri.Authority -ne $Target.Authority) {
+        return [pscustomobject]@{ Kind = 'system'; Description = "system proxy $($proxyUri.Authority)"; Proxy = $system }
     }
     [pscustomobject]@{ Kind = 'direct'; Description = 'direct connection'; Proxy = $null }
 }
