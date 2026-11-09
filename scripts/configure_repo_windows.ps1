@@ -75,8 +75,8 @@ try {
 
 # 3) The installer copies the already extracted, private Python runtime.
 if (-not (Test-Path (Join-Path $pythonDir 'python.exe') -PathType Leaf)) {
-    Write-Log "Embedded Python runtime missing in $pythonDir."
-    throw 'Embedded Python runtime was not installed.'
+    Write-Log "Bundled Python runtime missing in $pythonDir."
+    throw 'Bundled Python runtime was not installed.'
 }
 
 # 4) Ensure repo bootstrap script is accessible by the wrapper.

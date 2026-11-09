@@ -17,7 +17,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare runtime assets (Python + repo bootstrap)
+      - name: Refresh runtime assets (Python)
         shell: pwsh
         run: scripts\prepare_assets.ps1
 
@@ -30,7 +30,7 @@ jobs:
 
       - name: Build installer
         shell: cmd
-        run: build.cmd /DAppVersion=${{ steps.version.outputs.version }}
+        run: build.cmd --keep-runtime /DAppVersion=${{ steps.version.outputs.version }}
 
       - name: Publish prerelease
         uses: softprops/action-gh-release@v2

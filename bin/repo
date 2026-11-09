@@ -7,8 +7,12 @@ PYTHON_EXE="${APP_ROOT}/runtime/python/python.exe"
 
 REPO_SCRIPT="${APP_ROOT}/runtime/repo/repo"
 
+# Keep the private runtime independent of other Python installations.
+unset PYTHONHOME PYTHONPATH
+export PYTHONNOUSERSITE=1
+
 if [ ! -f "${PYTHON_EXE}" ]; then
-  echo "repo: embedded Python runtime not found at ${APP_ROOT}/runtime/python" >&2
+  echo "repo: bundled Python runtime not found at ${APP_ROOT}/runtime/python" >&2
   echo "Prepare the runtime using scripts/prepare_assets.ps1 or reinstall repo." >&2
   exit 1
 fi

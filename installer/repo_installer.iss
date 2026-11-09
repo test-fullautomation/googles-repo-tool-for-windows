@@ -1,7 +1,7 @@
 ; Inno Setup script for a portable repo tool installation.
-; This installer packages the `repo` bootstrap script plus a minimal embedded
-; Python runtime for repo only, so it can be used from cmd.exe and Git Bash
-; with no global Python installation required.
+; This installer packages a minimal, private full CPython runtime for repo only and
+; downloads the current `repo` bootstrap loader during installation, so it can be
+; used from cmd.exe and Git Bash with no global Python installation required.
 
 ; Override via command line, e.g. ISCC /DAppVersion=1.2.3 ... (build.cmd/build.sh
 ; forward extra arguments to ISCC). Falls back to the default below if omitted.
@@ -36,14 +36,24 @@ DisableProgramGroupPage=yes
 
 [Files]
 Source: "..\scripts\get_installer_identity.ps1"; Flags: dontcopy
-Source: "..\runtime\repo\repo"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
-Source: "..\runtime\repo\LICENSE"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
-Source: "..\runtime\repo\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}\runtime\repo"; Flags: ignoreversion
+Source: "..\scripts\download_repo_bootstrap.ps1"; Flags: dontcopy
+Source: "..\scripts\proxy_support.ps1"; Flags: dontcopy
+; The bootstrap loader is not part of the installer; Setup downloads it.
+Source: "{tmp}\repo-bootstrap"; DestDir: "{app}\runtime\repo"; DestName: "repo"; Flags: external ignoreversion
 Source: "..\bin\repo.cmd"; DestDir: "{app}\bin"; Flags: ignoreversion
 Source: "..\bin\repo"; DestDir: "{app}\bin"; Flags: ignoreversion
 Source: "..\scripts\configure_repo_windows.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\scripts\SymlinkPrivilege.cs"; DestDir: "{app}\scripts"; Flags: ignoreversion
-Source: "..\runtime\python\*"; DestDir: "{app}\runtime\python"; Excludes: "__pycache__\*,*.pyc"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\runtime\python\*"; DestDir: "{app}\runtime\python"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[InstallDelete]
+; Leftovers of the old embeddable Python layout would override the standard search path.
+Type: files; Name: "{app}\runtime\python\python*._pth"
+Type: files; Name: "{app}\runtime\python\python*.zip"
+
+[UninstallDelete]
+; Bytecode caches written at run time (e.g. by an elevated console) are not tracked by Setup.
+Type: filesandordirs; Name: "{app}\runtime\python"
 
 [Registry]
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}\bin"; Flags: preservestringtype; Check: NeedsAddPath(ExpandConstant('{app}\bin'))
@@ -54,9 +64,13 @@ const
 
 var
   PreviousUninstallNeedsRestart: Boolean;
-  UninstallProgressPage: TOutputProgressWizardPage;
+  StepPage: TOutputProgressWizardPage;
   UninstallSummary: String;
   InstallerUserSid: String;
+  ProxyPage: TInputQueryWizardPage;
+  NeedProxyCredentials: Boolean;
+  ProxyUser: String;
+  ProxyPassword: String;
 
 function ResolveInstallerUser(): String;
 var
@@ -99,11 +113,119 @@ begin
   if Result <> '' then InstallerUserSid := '';
 end;
 
+{ Returns 0 on success, 2 if the proxy requires credentials, otherwise 1.
+  ErrorText describes a failure. }
+function DownloadRepoBootstrap(var ErrorText: String): Integer;
+var
+  TargetFile: String;
+  ErrorFile: String;
+  CredentialFile: String;
+  Parameters: String;
+  ErrorData: AnsiString;
+  ExitCode: Integer;
+begin
+  Result := 1;
+  ErrorText := '';
+  TargetFile := ExpandConstant('{tmp}\repo-bootstrap');
+  ErrorFile := TargetFile + '.error';
+  CredentialFile := TargetFile + '.credentials';
+  DeleteFile(TargetFile);
+  DeleteFile(ErrorFile);
+  DeleteFile(CredentialFile);
+  try
+    ExtractTemporaryFile('proxy_support.ps1');
+    ExtractTemporaryFile('download_repo_bootstrap.ps1');
+    Parameters := ExpandConstant('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{tmp}\download_repo_bootstrap.ps1" -OutputFile "') + TargetFile + '"';
+    if ProxyUser <> '' then
+    begin
+      { Read and deleted by the script at once; never put the password on the command line. }
+      SaveStringToFile(CredentialFile, ProxyUser + #13#10 + ProxyPassword + #13#10, False);
+      Parameters := Parameters + ' -CredentialFile "' + CredentialFile + '"';
+    end;
+    Log('Downloading the repo bootstrap loader to ' + TargetFile);
+    { Original user: the user's proxy settings and credentials apply. }
+    if not ExecAsOriginalUser(
+      ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Parameters, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+      ErrorText := 'Could not start the repo bootstrap download: ' + SysErrorMessage(ExitCode)
+    else if (ExitCode = 0) and FileExists(TargetFile) then
+      Result := 0
+    else
+    begin
+      if ExitCode = 2 then Result := 2;
+      ErrorText := 'The repo bootstrap loader could not be downloaded.';
+      if LoadStringFromFile(ErrorFile, ErrorData) then
+        ErrorText := ErrorText + ' ' + Trim(String(ErrorData));
+    end;
+  except
+    ErrorText := 'The repo bootstrap download failed: ' + GetExceptionMessage;
+  end;
+  DeleteFile(CredentialFile);
+  if Result <> 0 then
+    Log('ERROR (' + IntToStr(Result) + '): ' + ErrorText)
+  else
+    Log('repo bootstrap loader downloaded.');
+end;
+
 procedure InitializeWizard();
 begin
-  UninstallProgressPage := CreateOutputProgressPage(
-    'Previous repo installation',
-    'Removing the previous version before installing repo.');
+  { Silent installations cannot ask: /ProxyUser= and /ProxyPassword= are the alternative. }
+  ProxyUser := ExpandConstant('{param:ProxyUser|}');
+  ProxyPassword := ExpandConstant('{param:ProxyPassword|}');
+  ProxyPage := CreateInputQueryPage(wpSelectDir,
+    'Proxy authentication',
+    'Your proxy server requires a user name and password.',
+    'Enter the credentials for the proxy (for example DOMAIN\user). They are only used for this download and are not stored.');
+  ProxyPage.Add('User name:', False);
+  ProxyPage.Add('Password:', True);
+  StepPage := CreateOutputProgressPage(
+    'Preparing installation',
+    'Setup is preparing the installation of repo.');
+end;
+
+{ The download runs when leaving the directory page, so that a missing connection
+  or proxy sign-in is dealt with before anything is installed. }
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := (PageID = ProxyPage.ID) and not NeedProxyCredentials;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Code: Integer;
+  ErrorText: String;
+begin
+  Result := True;
+  if (CurPageID <> wpSelectDir) and (CurPageID <> ProxyPage.ID) then Exit;
+  if FileExists(ExpandConstant('{tmp}\repo-bootstrap')) then Exit;
+  if CurPageID = ProxyPage.ID then
+  begin
+    ProxyUser := Trim(ProxyPage.Values[0]);
+    ProxyPassword := ProxyPage.Values[1];
+  end;
+
+  WizardForm.NextButton.Enabled := False;
+  try
+    Code := DownloadRepoBootstrap(ErrorText);
+  finally
+    WizardForm.NextButton.Enabled := True;
+  end;
+
+  NeedProxyCredentials := (Code = 2);
+  if Code = 2 then
+  begin
+    { From the directory page the proxy page follows; on the proxy page itself stay. }
+    if CurPageID = ProxyPage.ID then
+    begin
+      MsgBox(ErrorText + #13#10#13#10 + 'Please check the user name and password.', mbError, MB_OK);
+      Result := False;
+    end;
+  end
+  else if Code <> 0 then
+  begin
+    MsgBox(ErrorText + #13#10#13#10 + 'An Internet connection is required during installation.', mbError, MB_OK);
+    Result := False;
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -114,6 +236,11 @@ var
   PreviousFsRedirection: Boolean;
 begin
   if CurStep <> ssPostInstall then Exit;
+
+  Log('Configuring Windows (Developer Mode, symlink privilege).');
+  WizardForm.StatusLabel.Caption := 'Step 5/5: Configuring Windows (Developer Mode, symlink privilege)...';
+  WizardForm.FilenameLabel.Caption := '';
+  WizardForm.Refresh;
 
   { Inno Setup 5.5.1: use System32 with WOW64 redirection disabled
     only while launching native PowerShell. Restore the previous state. }
@@ -197,16 +324,9 @@ begin
     if not RegKeyExists(RootKey, UninstallKey) then
       Exit;
 
-    UninstallProgressPage.SetText('Uninstalling the previous repo installation...',
+    StepPage.SetText('Step 3/5: Uninstalling the previous repo installation...',
       'Please wait. If removal fails, the new installation will continue anyway.');
-    UninstallProgressPage.SetProgress(0, 1);
-    UninstallProgressPage.Show;
-    try
-      Warning := UninstallPrevious(RootKey);
-      UninstallProgressPage.SetProgress(1, 1);
-    finally
-      UninstallProgressPage.Hide;
-    end;
+    Warning := UninstallPrevious(RootKey);
   except
     Warning := 'Previous repo uninstall raised an exception: ' + GetExceptionMessage;
   end;
@@ -249,14 +369,42 @@ begin
     Uninstall is best effort: never return an error or request a pre-install
     restart. Check every registry view even if an earlier attempt failed. }
   { Identify the original user before uninstalling or modifying anything. }
-  Result := ResolveInstallerUser();
-  if Result <> '' then Exit;
-  TryUninstallPrevious(HKLM32);
-  TryUninstallPrevious(HKCU32);
-  if IsWin64 then
-  begin
-    TryUninstallPrevious(HKLM64);
-    TryUninstallPrevious(HKCU64);
+  StepPage.SetProgress(0, 5);
+  StepPage.SetText('Step 1/5: Identifying the installing user...', '');
+  StepPage.Show;
+  try
+    Result := ResolveInstallerUser();
+    { Download first: if it fails, nothing (including the old version) has been touched. }
+    if Result = '' then
+    begin
+      StepPage.SetProgress(1, 5);
+      if FileExists(ExpandConstant('{tmp}\repo-bootstrap')) then
+        StepPage.SetText('Step 2/5: The repo bootstrap loader has been downloaded.', '')
+      else
+      begin
+        { Silent installations skip the wizard pages and download here. }
+        StepPage.SetText('Step 2/5: Downloading the current repo bootstrap loader...',
+          'Source: storage.googleapis.com');
+        if DownloadRepoBootstrap(Result) <> 0 then
+          Result := Result + ' An Internet connection is required during installation;' +
+            ' pass /ProxyUser= and /ProxyPassword= if the proxy requires authentication.' +
+            ' Nothing was changed.';
+      end;
+    end;
+    if Result = '' then
+    begin
+      StepPage.SetProgress(2, 5);
+      TryUninstallPrevious(HKLM32);
+      TryUninstallPrevious(HKCU32);
+      if IsWin64 then
+      begin
+        TryUninstallPrevious(HKLM64);
+        TryUninstallPrevious(HKCU64);
+      end;
+      StepPage.SetProgress(3, 5);
+    end;
+  finally
+    StepPage.Hide;
   end;
 end;
 
